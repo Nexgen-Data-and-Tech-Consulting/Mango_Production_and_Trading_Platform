@@ -82,6 +82,26 @@ export default function FarmerDashboard() {
               </span>
             ))}
           </div>
+
+          {/* A rejected record is correctable: the officer said what to fix,
+              and PUT /surveys/:id puts it back in their queue. Without this the
+              farmer only has "File survey", which 409s on the one-per-year rule. */}
+          {years
+            .filter((y) => y.status === 'rejected' && y.id)
+            .map((y) => (
+              <div className="status status--reminder" key={`fix-${y.id}`}>
+                <span>
+                  <FiClipboard /> Your {y.year} BS survey was sent back
+                  {y.verificationNotes ? `: ${y.verificationNotes}` : '.'}
+                </span>
+                <button
+                  className="btn-primary"
+                  onClick={() => navigate(`/farmer/survey/${y.id}/edit`)}
+                >
+                  Correct and resubmit
+                </button>
+              </div>
+            ))}
         </div>
       )}
 

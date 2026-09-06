@@ -18,14 +18,19 @@ export default function TraderDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const myReqsResponse = await api.get('/traders/requirements/my-requirements', {
-        params: { limit: 5 },
-      });
+      // Counting statuses inside the 5-row page only ever described that page:
+      // a trader with 12 requirements and 4 completed read "Total 12 / Completed 0".
+      // Ask the server for each count instead, the way Total already did.
+      const [myReqsResponse, inProgressResponse, completedResponse] = await Promise.all([
+        api.get('/traders/requirements/my-requirements', { params: { limit: 5 } }),
+        api.get('/traders/requirements/my-requirements', { params: { status: 'in-progress', limit: 1 } }),
+        api.get('/traders/requirements/my-requirements', { params: { status: 'completed', limit: 1 } }),
+      ]);
 
       setStats({
         totalRequirements: myReqsResponse.data.total,
-        inProgressRequirements: myReqsResponse.data.requirements.filter((r) => r.status === 'in-progress').length,
-        completedRequirements: myReqsResponse.data.requirements.filter((r) => r.status === 'completed').length,
+        inProgressRequirements: inProgressResponse.data.total,
+        completedRequirements: completedResponse.data.total,
       });
 
       setMyRequirements(myReqsResponse.data.requirements);

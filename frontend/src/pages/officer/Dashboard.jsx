@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import toast from 'react-hot-toast';
 import { FiClipboard, FiSun, FiPackage, FiFlag, FiBookOpen } from 'react-icons/fi';
 import api from '../../services/api';
 import PageBanner from '../../components/PageBanner';
 import StatusBadge from '../../components/StatusBadge';
-import { getProvinces, getDistricts, getMunicipalities } from '../../utils/nepalLocations';
+import { getMunicipalities } from '../../utils/nepalLocations';
 import { getCurrentBsYear } from '../../utils/treeAgeYield';
 import '../../styles/dashboard.css';
 import '../../styles/directory.css';
@@ -13,8 +14,16 @@ import '../../styles/census.css';
 
 export default function OfficerDashboard() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
   const [loading, setLoading] = useState(true);
   const currentYearBS = getCurrentBsYear();
+
+  // The backend scopes every officer query to this district regardless of what
+  // is sent, so the dashboard shows it rather than offering province/district
+  // pickers that cannot change the result.
+  const coverage = user?.coverageArea;
+  const coverageProvince = coverage?.province || '';
+  const coverageDistrict = coverage?.district || '';
 
   const [pendingCount, setPendingCount] = useState(0);
   const [openReportCount, setOpenReportCount] = useState(0);
@@ -24,8 +33,6 @@ export default function OfficerDashboard() {
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [profileFilters, setProfileFilters] = useState({
     role: 'farmer',
-    province: '',
-    district: '',
     municipality: '',
   });
 
@@ -44,8 +51,8 @@ export default function OfficerDashboard() {
     try {
       const [pendingRes, farmerCountRes, traderCountRes, reportsRes] = await Promise.all([
         api.get('/surveys', { params: { status: 'submitted', limit: 1 } }),
-        api.get('/admin/users', { params: { role: 'farmer', limit: 1 } }),
-        api.get('/admin/users', { params: { role: 'trader', limit: 1 } }),
+        api.get('/admin/users', { params: { role: 'farmer', district: coverageDistrict, limit: 1 } }),
+        api.get('/admin/users', { params: { role: 'trader', district: coverageDistrict, limit: 1 } }),
         api.get('/reports', { params: { status: 'open', limit: 1 } }),
       ]);
       setPendingCount(pendingRes.data.total);
@@ -62,7 +69,9 @@ export default function OfficerDashboard() {
   const fetchProfiles = async () => {
     setProfilesLoading(true);
     try {
-      const { data } = await api.get('/admin/users', { params: { ...profileFilters, limit: 20 } });
+      const { data } = await api.get('/admin/users', {
+        params: { ...profileFilters, district: coverageDistrict, limit: 20 },
+      });
       setProfiles(data.users);
     } catch (error) {
       console.error('Error fetching profiles:', error);
@@ -74,14 +83,7 @@ export default function OfficerDashboard() {
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    const updated = { ...profileFilters, [name]: value };
-    if (name === 'province') {
-      updated.district = '';
-      updated.municipality = '';
-    } else if (name === 'district') {
-      updated.municipality = '';
-    }
-    setProfileFilters(updated);
+    setProfileFilters({ ...profileFilters, [name]: value });
   };
 
   const viewProfileDetails = async (userId) => {
@@ -106,7 +108,7 @@ export default function OfficerDashboard() {
         variant="admin"
         eyebrow="Officer dashboard"
         title="Officer Dashboard"
-        subtitle="Browse farmer and trader profiles in your coverage area. Survey verification, reports, and market prices are in the sidebar."
+        subtitle={`Browse farmer and trader profiles in ${coverageDistrict || 'your coverage area'}. Survey verification, reports, and market prices are in the sidebar.`}
       />
 
       <div className="stats-grid">
@@ -153,27 +155,8 @@ export default function OfficerDashboard() {
           </select>
         </div>
         <div className="filter-group">
-          <label>Province</label>
-          <select name="province" value={profileFilters.province} onChange={handleFilterChange}>
-            <option value="">All provinces</option>
-            {getProvinces().map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-group">
           <label>District</label>
-          <select
-            name="district"
-            value={profileFilters.district}
-            onChange={handleFilterChange}
-            disabled={!profileFilters.province}
-          >
-            <option value="">All districts</option>
-            {getDistricts(profileFilters.province).map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
+          <input type="text" value={coverageDistrict || 'Not assigned'} disabled readOnly />
         </div>
         <div className="filter-group">
           <label>Municipality</label>
@@ -181,10 +164,10 @@ export default function OfficerDashboard() {
             name="municipality"
             value={profileFilters.municipality}
             onChange={handleFilterChange}
-            disabled={!profileFilters.district}
+            disabled={!coverageDistrict}
           >
             <option value="">All municipalities</option>
-            {getMunicipalities(profileFilters.province, profileFilters.district).map((m) => (
+            {getMunicipalities(coverageProvince, coverageDistrict).map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>

@@ -2,16 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../services/api';
-import { getProvinces, getDistricts, getMunicipalities } from '../../utils/nepalLocations';
+import { getProvinces, getDistricts } from '../../utils/nepalLocations';
 import '../../styles/market.css';
 
 export default function MarketPrices() {
   const { user } = useSelector((state) => state.auth);
 
+  // Officers set one price per district + variety + day, so district is the
+  // finest granularity prices actually have. A municipality filter matched only
+  // the covering officer's own municipality and hid prices that did apply here.
   const [filters, setFilters] = useState({
     province: user?.address?.province || '',
     district: user?.address?.district || '',
-    municipality: '',
   });
   const [prices, setPrices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +55,6 @@ export default function MarketPrices() {
     const updated = { ...filters, [name]: value };
     if (name === 'province') {
       updated.district = '';
-      updated.municipality = '';
-    } else if (name === 'district') {
-      updated.municipality = '';
     }
     setFilters(updated);
   };
@@ -83,15 +82,6 @@ export default function MarketPrices() {
             <option value="">All districts</option>
             {getDistricts(filters.province).map((d) => (
               <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-group">
-          <label>Municipality:</label>
-          <select name="municipality" value={filters.municipality} onChange={handleFilterChange} disabled={!filters.district}>
-            <option value="">All municipalities</option>
-            {getMunicipalities(filters.province, filters.district).map((m) => (
-              <option key={m} value={m}>{m}</option>
             ))}
           </select>
         </div>

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import '../../styles/forms.css';
@@ -22,8 +22,14 @@ const TREE_AGE_RANGES = TREE_AGE_BRACKETS.map((b) => b.key);
 export default function SurveyForm() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  // With an :id in the path this form edits an existing record (PUT) instead of
+  // filing a new one (POST). The backend allows one survey per farmer per census
+  // year, so correcting a rejected record is the only way back in.
+  const { id: editingId } = useParams();
+  const isEditing = Boolean(editingId);
   const { currentYearBS, years } = useSelector((state) => state.survey);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(editingId));
 
   const censusYear = currentYearBS || getCurrentBsYear();
   const previousYear = censusYear - 1;
@@ -74,6 +80,45 @@ municipality: '',
     TREE_AGE_RANGES.reduce((acc, range) => ({ ...acc, [range]: '' }), {})
   );
 
+  useEffect(() => {
+    if (!editingId) return;
+    let cancelled = false;
+
+    api
+      .get(`/surveys/${editingId}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const s = data.survey;
+        setFormData((prev) => {
+          const next = { ...prev };
+          // Copy only the keys this form owns, so server-side fields
+          // (status, expectedProductionKg, farmerId, ...) are never echoed back.
+          Object.keys(prev).forEach((key) => {
+            if (s[key] !== undefined && s[key] !== null) next[key] = s[key];
+          });
+          return next;
+        });
+        setTreeAges(
+          TREE_AGE_RANGES.reduce((acc, range) => {
+            const entry = (s.treeAgeDistribution || []).find((d) => d.ageRange === range);
+            return { ...acc, [range]: entry ? String(entry.numberOfTrees) : '' };
+          }, {})
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        toast.error(error.response?.data?.message || 'Failed to load your survey');
+        navigate('/farmer/dashboard');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, navigate]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     const updated = { ...formData, [name]: type === 'checkbox' ? checked : value };
@@ -118,9 +163,9 @@ municipality: '',
       .map((range) => ({ ageRange: range, numberOfTrees: Number(treeAges[range]) }));
 
     try {
-      await api.post('/surveys', {
+      const payload = {
         ...formData,
-        surveyYearBS: censusYear,
+        surveyYearBS: isEditing ? undefined : censusYear,
         age: Number(formData.age),
         householdMembers: Number(formData.householdMembers),
         orchardAreaKatha: Number(formData.orchardAreaKatha),
@@ -131,20 +176,35 @@ municipality: '',
         earningsPreviousYearNPR: formData.earningsPreviousYearNPR ? Number(formData.earningsPreviousYearNPR) : 0,
         satisfactionLevel: Number(formData.satisfactionLevel),
         treeAgeDistribution,
-      });
-      toast.success(`Survey for ${censusYear} BS submitted successfully`);
+      };
+
+      if (isEditing) {
+        await api.put(`/surveys/${editingId}`, payload);
+        toast.success('Survey updated and sent back for review');
+      } else {
+        await api.post('/surveys', payload);
+        toast.success(`Survey for ${censusYear} BS submitted successfully`);
+      }
+
       dispatch(checkSurveyStatus());
       navigate('/farmer/dashboard');
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to submit survey');
+      toast.error(
+        error.response?.data?.message ||
+          (isEditing ? 'Failed to update survey' : 'Failed to submit survey')
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (loadingExisting) {
+    return <div className="form-container">Loading your survey...</div>;
+  }
+
   return (
     <div className="form-container">
-      <h1>Farm Survey</h1>
+      <h1>{isEditing ? 'Correct Your Survey' : 'Farm Survey'}</h1>
 
       <div className="census-year-banner">
         <div>
@@ -431,7 +491,13 @@ municipality: '',
         <textarea rows="3" name="suggestions" value={formData.suggestions} onChange={handleChange} />
 
         <button type="submit" disabled={submitting}>
-          {submitting ? 'Submitting...' : 'Submit Survey'}
+          {submitting
+            ? isEditing
+              ? 'Resubmitting...'
+              : 'Submitting...'
+            : isEditing
+              ? 'Resubmit for review'
+              : 'Submit Survey'}
         </button>
       </form>
     </div>

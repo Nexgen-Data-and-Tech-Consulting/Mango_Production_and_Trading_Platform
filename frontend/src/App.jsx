@@ -104,6 +104,14 @@ function App() {
           }
         />
         <Route
+          path="/farmer/survey/:id/edit"
+          element={
+            <ProtectedRoute requiredRole={['farmer']}>
+              <SurveyForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/farmer/farms/new"
           element={
             <ProtectedRoute requiredRole={['farmer']}>
