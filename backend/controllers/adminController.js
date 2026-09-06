@@ -104,6 +104,22 @@ export const getUserDetails = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Officers may only read profiles inside their coverage district. Without
+    // this, scoping getUserManagement achieves nothing: an officer could walk
+    // ids instead of listing. The same gap getSurveyById closes for surveys —
+    // and this response carries whole survey documents (both years' earnings,
+    // household size, production cost). Fails closed on a missing district,
+    // like every other scoping site here.
+    if (req.user.role === 'surveyor') {
+      const coverageDistrict = req.user.coverageArea?.district;
+      if (!coverageDistrict || user.address?.district !== coverageDistrict) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to view profiles outside your coverage area',
+        });
+      }
+    }
+
     let details = {};
 
     if (user.role === 'farmer') {

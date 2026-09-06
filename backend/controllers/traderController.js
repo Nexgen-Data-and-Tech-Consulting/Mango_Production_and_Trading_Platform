@@ -263,10 +263,27 @@ export const addResponse = async (req, res) => {
 
     const user = await User.findById(req.user.id);
 
+    // Whitelist what the farmer may supply. Spreading req.body last let the
+    // body override the trusted fields:
+    //   status     — forging 'accepted' hides the response from the trader
+    //                (an open requirement lists only 'pending' ones) and makes
+    //                it surface as an accepted deal, with the farmer's phone,
+    //                email and production snapshot attached, once the
+    //                requirement moves off 'open'.
+    //   farmerId   — null made every later read 500 for good: both
+    //                getMyResponses and the farmer branch of
+    //                getBuyingRequirementById call .toString() on it.
+    //   farmerName — a farmer could show the trader any name they liked.
+    // status and respondedAt now come from the schema defaults, and only
+    // updateResponseStatus — trader-only — can accept a response.
+    const { availableQuantityKg, proposedPricePerKg, message } = req.body;
+
     const response = {
       farmerId: req.user.id,
       farmerName: user.name,
-      ...req.body,
+      availableQuantityKg,
+      proposedPricePerKg,
+      message,
     };
 
     requirement.responses.push(response);

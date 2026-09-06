@@ -10,7 +10,6 @@ import chatRoutes from './routes/chatRoutes.js';
 
 // Load env FIRST before anything else
 dotenv.config();
-console.log(`[${process.env.CLOUDINARY_NAME}]`, `[${process.env.CLOUDINARY_API_KEY}]`, `[${process.env.CLOUDINARY_API_SECRET}]`);
 
 import { connectDB } from './config/database.js';
 import logger from './utils/logger.js';
