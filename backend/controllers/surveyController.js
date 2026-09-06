@@ -9,6 +9,7 @@ import {
   censusYearOptions,
   calculateExpectedProduction,
 } from '../utils/constants.js';
+import { estimateNationalProduction } from '../utils/nationalEstimate.js';
 
 /**
  * Officers only ever act within their assigned district. Mirrors the scoping
@@ -575,6 +576,16 @@ export const getCensusSummary = async (req, res) => {
       }))
       .sort((a, b) => b.reportedProductionKg - a.reportedProductionKg);
 
+    // Registered, surveyed farmers are a sample of the district/province/
+    // country, not the whole population. Scale that sample against the
+    // NSCA 2021/22 tree-count benchmark for this same scope so the page can
+    // show an actual national-level estimate alongside the raw roll-up.
+    const nationalEstimate = estimateNationalProduction({
+      scope: { province: scope.province, district: scope.district },
+      totals,
+      treeAgeProfile,
+    });
+
     res.json({
       success: true,
       year,
@@ -601,6 +612,7 @@ export const getCensusSummary = async (req, res) => {
           : 0,
       },
       treeAgeProfile,
+      nationalEstimate,
       breakdown,
       surveys,
     });

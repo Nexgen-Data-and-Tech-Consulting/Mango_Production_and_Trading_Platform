@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiUsers, FiTrendingUp, FiMapPin, FiLayers, FiCheckCircle } from 'react-icons/fi';
+import { FiUsers, FiTrendingUp, FiMapPin, FiLayers, FiCheckCircle, FiGlobe } from 'react-icons/fi';
 import StatusBadge from './StatusBadge';
 import {
   TREE_AGE_BRACKETS,
@@ -8,6 +8,7 @@ import {
   YIELD_FLAG_LABELS,
   formatKg,
   formatMT,
+  formatLargeMT,
 } from '../utils/treeAgeYield';
 import '../styles/census.css';
 
@@ -15,6 +16,37 @@ const TIER_LABELS = {
   province: 'Province',
   district: 'District',
   municipality: 'Municipality',
+};
+
+const RELIABILITY_PILL = { reliable: 'ok', developing: 'review', indicative: 'outlier', 'no-data': 'no-data' };
+const RELIABILITY_LABELS = {
+  reliable: 'Reliable sample',
+  developing: 'Developing sample',
+  indicative: 'Indicative only',
+  'no-data': 'No data',
+};
+
+/** Below 0.1% a fixed one-decimal display reads as "0.0%" for almost every
+ *  district, which looks like a bug rather than a true tiny sample. */
+const formatCoveragePercent = (percent) => {
+  if (percent === null || percent === undefined) return '—';
+  return percent < 0.1 ? `${percent.toFixed(3)}%` : `${percent.toFixed(1)}%`;
+};
+
+/** Positive: actual production exceeds the tree-age table's midpoint.
+ *  Negative (the common case): the trees on the ground could be carrying
+ *  more than farmers are currently reporting. */
+const gapClass = (ne) => {
+  const { reported, planning } = ne.estimatedProductionKg;
+  if (!planning) return '';
+  return reported - planning < 0 ? 'is-negative' : 'is-positive';
+};
+
+const formatGapPercent = (ne) => {
+  const { reported, planning } = ne.estimatedProductionKg;
+  if (!planning) return '—';
+  const pct = ((reported - planning) / planning) * 100;
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
 };
 
 /**
@@ -31,6 +63,7 @@ const TIER_LABELS = {
 export default function CensusReport({ census, onDrill }) {
   const totals = census?.totals;
   if (!totals) return null;
+  const ne = census.nationalEstimate;
 
   const tier = TIER_LABELS[census.groupedBy] || 'Area';
   const canDrill = typeof onDrill === 'function' && census.groupedBy !== 'municipality';
@@ -63,6 +96,70 @@ export default function CensusReport({ census, onDrill }) {
           <p className="stat-sub">MT · expected {totals.expectedProductionMT} MT</p>
         </div>
       </div>
+
+      {/* ---------- National estimate ---------- */}
+      {ne && (
+        <div className="census-panel">
+          <h2><FiGlobe /> National Estimate</h2>
+          <p className="census-panel__intro">
+            Registered farmers are a sample, not the whole population. This scales the
+            sample&apos;s production per bearing tree up against the government&apos;s
+            2021/22 agriculture census bearing-tree count for {ne.benchmark.name}, and
+            compares that against what the same tree-age mix could potentially carry.
+          </p>
+
+          {ne.reliability === 'no-data' ? (
+            <p className="census-panel__intro">
+              {ne.benchmark.totalTrees === 0
+                ? `The 2021/22 census recorded no mango holdings in ${ne.benchmark.name}, so no estimate can be scaled here.`
+                : `No bearing trees have been reported yet in ${ne.benchmark.name} — nothing to scale up yet.`}
+            </p>
+          ) : (
+            <div className="census-compare">
+              <div className="census-compare__item">
+                <span className="detail-label">Coverage</span>
+                <strong>{formatCoveragePercent(ne.coveragePercent)}</strong>
+                <span className="census-compare__sub">
+                  {totals.totalTrees.toLocaleString('en-IN')} registered of {ne.benchmark.totalTrees.toLocaleString('en-IN')} census trees
+                </span>
+              </div>
+              <div className="census-compare__item">
+                <span className="detail-label">Estimated Actual Production</span>
+                <strong>{formatLargeMT(ne.estimatedProductionKg.reported)}</strong>
+                <span className="census-compare__sub">from reported yields, scaled to {ne.benchmark.name}</span>
+              </div>
+              <div className="census-compare__item">
+                <span className="detail-label">Production Potential</span>
+                <strong>
+                  {formatLargeMT(ne.estimatedProductionKg.planningLow)} – {formatLargeMT(ne.estimatedProductionKg.planningHigh)}
+                </strong>
+                <span className="census-compare__sub">tree-age reference table, not reported data</span>
+              </div>
+              <div className="census-compare__item">
+                <span className="detail-label">National Yield Gap</span>
+                <strong className={gapClass(ne)}>{formatGapPercent(ne)}</strong>
+                <span className="census-compare__sub">actual vs. potential midpoint</span>
+              </div>
+              <div className="census-compare__item">
+                <span className="detail-label">Sample Reliability</span>
+                <strong>
+                  <span className={`yield-pill yield-pill--${RELIABILITY_PILL[ne.reliability]}`}>
+                    {RELIABILITY_LABELS[ne.reliability]}
+                  </span>
+                </strong>
+                <span className="census-compare__sub">{ne.sampleFarmers} registered farms</span>
+              </div>
+            </div>
+          )}
+
+          <p className="census-panel__foot">
+            Method: {ne.sampleFarmers} registered farms → kg per bearing tree (reported) → ×
+            the government census&apos;s bearing-tree count for {ne.benchmark.name}. The
+            potential range instead applies the tree-age reference table below.
+            Source: {ne.benchmark.source}.
+          </p>
+        </div>
+      )}
 
       {/* ---------- Expected vs reported ---------- */}
       <div className="census-panel">

@@ -156,3 +156,13 @@ export const formatKg = (kg) =>
 /** Metric tonnes, for district-level totals where kg gets unreadable. */
 export const formatMT = (kg) =>
   kg === null || kg === undefined ? '—' : `${(kg / 1000).toFixed(2)} MT`;
+
+/** Metric tonnes at national/province scale — thousands-separated, and no
+ *  decimals once the figure passes ~1,000 MT, where two decimal places would
+ *  be false precision on a six-figure tonnage. */
+export const formatLargeMT = (kg) => {
+  if (kg === null || kg === undefined) return '—';
+  const mt = kg / 1000;
+  const decimals = Math.abs(mt) >= 1000 ? 0 : 2;
+  return `${mt.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} MT`;
+};

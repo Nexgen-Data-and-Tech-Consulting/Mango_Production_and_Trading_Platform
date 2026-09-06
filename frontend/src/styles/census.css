@@ -296,6 +296,14 @@
   background: var(--color-bg);
 }
 
+.census-panel__foot {
+  margin: 14px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--color-bark);
+}
+
 /* ---------- Expected vs reported comparison ---------- */
 .census-compare {
   display: grid;
