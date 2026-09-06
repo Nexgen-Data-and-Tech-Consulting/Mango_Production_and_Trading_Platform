@@ -55,6 +55,59 @@ const denySurveyRead = (res, role) =>
     message: `User role ${role} is not authorized to read survey records`,
   });
 
+/**
+ * Paths a client may never set on a survey, on create or on update. They are
+ * the record's provenance and verification state, owned by the server: a
+ * farmer who could post `status: 'verified'` would have the record counted in
+ * the district roll-up and the national estimate without an officer ever
+ * seeing it. One list, applied by both createSurvey and updateSurvey.
+ */
+const SERVER_OWNED_SURVEY_FIELDS = ['farmerId', 'status', 'verifiedBy', 'verifiedAt', '_id'];
+
+const stripServerOwnedFields = (body) => {
+  const payload = { ...body };
+  SERVER_OWNED_SURVEY_FIELDS.forEach((field) => delete payload[field]);
+  return payload;
+};
+
+/**
+ * Who may modify a survey record. The mirror of SURVEY_READERS on the write
+ * side:
+ *
+ *   farmer   → only their own submissions
+ *   surveyor → only within their assigned coverage district
+ *   admin    → everything
+ *
+ * Every other role — traders above all — is refused outright. The only gate
+ * before this was "is this a farmer editing someone else's record", so every
+ * non-farmer role fell straight through to the write and could PUT or DELETE
+ * any census record by id.
+ *
+ * Returns a refusal message, or null when the write is allowed.
+ */
+const SURVEY_WRITERS = ['farmer', 'surveyor', 'admin'];
+
+const surveyWriteDenial = (survey, user, action) => {
+  if (!SURVEY_WRITERS.includes(user.role)) {
+    return `User role ${user.role} is not authorized to ${action} survey records`;
+  }
+
+  if (user.role === 'farmer' && survey.farmerId.toString() !== user.id) {
+    return `Not authorized to ${action} this survey`;
+  }
+
+  if (user.role === 'surveyor') {
+    // Fails closed, like applyOfficerScope: an officer with no coverage
+    // district has a malformed account, not an unrestricted one.
+    const district = officerDistrict(user);
+    if (!district || survey.district !== district) {
+      return `Not authorized to ${action} surveys outside your coverage area`;
+    }
+  }
+
+  return null;
+};
+
 export const createSurvey = async (req, res) => {
   try {
     const surveyYearBS = req.body.surveyYearBS
@@ -69,7 +122,7 @@ export const createSurvey = async (req, res) => {
     }
 
     const survey = await Survey.create({
-      ...req.body,
+      ...stripServerOwnedFields(req.body),
       surveyYearBS,
       farmerId: req.user.id,
     });
@@ -250,15 +303,9 @@ export const updateSurvey = async (req, res) => {
       });
     }
 
-    // Authorization
-    if (
-      req.user.role === 'farmer' &&
-      survey.farmerId.toString() !== req.user.id
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this survey',
-      });
+    const denial = surveyWriteDenial(survey, req.user, 'update');
+    if (denial) {
+      return res.status(403).json({ success: false, message: denial });
     }
 
     // A verified census record is the district's record of the year — reopening
@@ -272,10 +319,8 @@ export const updateSurvey = async (req, res) => {
 
     // Assigning then saving (rather than findByIdAndUpdate) is what lets the
     // pre-save hook recompute expected production and the yield gap.
-    const immutable = ['farmerId', 'status', 'verifiedBy', 'verifiedAt', '_id'];
-    Object.keys(req.body).forEach((key) => {
-      if (!immutable.includes(key)) survey.set(key, req.body[key]);
-    });
+    const updates = stripServerOwnedFields(req.body);
+    Object.keys(updates).forEach((key) => survey.set(key, updates[key]));
 
     // A farmer correcting a rejected record is resubmitting it. Status is
     // immutable from the request body, so move it back into the officer's
@@ -319,15 +364,9 @@ export const deleteSurvey = async (req, res) => {
       });
     }
 
-    // Authorization
-    if (
-      req.user.role === 'farmer' &&
-      survey.farmerId.toString() !== req.user.id
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to delete this survey',
-      });
+    const denial = surveyWriteDenial(survey, req.user, 'delete');
+    if (denial) {
+      return res.status(403).json({ success: false, message: denial });
     }
 
     await Survey.findByIdAndDelete(req.params.id);
@@ -374,10 +413,12 @@ export const verifySurvey = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Survey not found' });
     }
 
-    // An officer can only verify records inside their coverage area.
+    // An officer can only verify records inside their coverage area. Fails
+    // closed, like applyOfficerScope: without the district check an officer
+    // with no coverage area could verify anywhere in the country.
     if (
-      req.user.coverageArea?.district &&
-      survey.district !== req.user.coverageArea.district
+      !officerDistrict(req.user) ||
+      survey.district !== officerDistrict(req.user)
     ) {
       return res.status(403).json({
         success: false,

@@ -189,8 +189,13 @@ municipality: '',
       dispatch(checkSurveyStatus());
       navigate('/farmer/dashboard');
     } catch (error) {
+      // POST /surveys runs validateSurveyData, which reports field-level
+      // problems as { errors: [{ field, message }] } rather than a single
+      // message. Surface the first one so the farmer knows what to correct.
+      const data = error.response?.data;
+      const fieldError = data?.errors?.[0];
       toast.error(
-        error.response?.data?.message ||
+        (fieldError ? `${fieldError.field}: ${fieldError.message}` : data?.message) ||
           (isEditing ? 'Failed to update survey' : 'Failed to submit survey')
       );
     } finally {
