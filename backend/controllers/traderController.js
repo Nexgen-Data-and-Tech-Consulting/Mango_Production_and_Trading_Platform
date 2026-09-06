@@ -34,10 +34,24 @@ export const createBuyingRequirement = async (req, res) => {
         const allowedMin = base + offset.min;
         const allowedMax = base + offset.max;
 
-        if (budget?.minPricePerKg < allowedMin || budget?.maxPricePerKg > allowedMax) {
+        // Compare explicitly rather than relying on `budget?.x < n`: with budget
+        // omitted both operands are undefined, every comparison is false, and the
+        // band is bypassed entirely.
+        const minOffered = budget?.minPricePerKg;
+        const maxOffered = budget?.maxPricePerKg;
+        const bandMessage = `For ${quality} quality ${variety} in ${location.district}, your price must be between Rs. ${allowedMin} and Rs. ${allowedMax}/kg (officer reference price: Rs. ${base}/kg).`;
+
+        if (!Number.isFinite(minOffered) || !Number.isFinite(maxOffered)) {
           return res.status(400).json({
             success: false,
-            message: `For ${quality} quality ${variety} in ${location.district}, your price must be between Rs. ${allowedMin} and Rs. ${allowedMax}/kg (officer reference price: Rs. ${base}/kg).`,
+            message: `A minimum and maximum price per kg is required. ${bandMessage}`,
+          });
+        }
+
+        if (minOffered < allowedMin || maxOffered > allowedMax) {
+          return res.status(400).json({
+            success: false,
+            message: bandMessage,
           });
         }
       }

@@ -21,6 +21,16 @@ export const generateAnalytics = async (req, res) => {
       startDate.setDate(startDate.getDate() - 7);
     } else if (period === 'monthly') {
       startDate.setMonth(startDate.getMonth() - 1);
+    } else if (period === 'yearly') {
+      startDate.setFullYear(startDate.getFullYear() - 1);
+    } else {
+      // Anything outside the Analytics period enum would leave startDate at
+      // "now", match no surveys, and still persist an all-zero row that
+      // getAnalytics would later serve as real data.
+      return res.status(400).json({
+        success: false,
+        message: 'Period must be one of: daily, weekly, monthly, yearly',
+      });
     }
 
     const filter = { createdAt: { $gte: startDate } };
