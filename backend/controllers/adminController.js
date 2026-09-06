@@ -45,6 +45,17 @@ export const getUserManagement = async (req, res) => {
     if (district) filter['address.district'] = district;
     if (municipality) filter['address.municipality'] = municipality;
 
+    // Officers see only their own coverage district, whatever the query asks
+    // for — this endpoint backs the officer dashboard's "profiles in your
+    // coverage area" list as well as its farmer/trader counts. Mirrors the
+    // scoping in reportController and surveyController so every officer-facing
+    // list agrees on who they can see. A missing coverage district means the
+    // account is malformed: scope to nothing rather than to everything.
+    if (req.user.role === 'surveyor') {
+      const coverageDistrict = req.user.coverageArea?.district;
+      filter['address.district'] = coverageDistrict || { $in: [] };
+    }
+
     const users = await User.find(filter)
       .select('-password')
       .skip(skip)

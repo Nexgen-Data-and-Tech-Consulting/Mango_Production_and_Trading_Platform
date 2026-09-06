@@ -62,8 +62,15 @@ const buyingRequirementSchema = new mongoose.Schema(
     responseCount: { type: Number, default: 0 },
     viewCount: { type: Number, default: 0 },
   },
-  { timestamps: true, indexes: [{ traderId: 1 }, { status: 1 }, { variety: 1 }] }
+  { timestamps: true }
 );
+
+// Declared via schema.index(): the `indexes` schema option does not exist and
+// was silently ignored, so none of these were ever created.
+// getMyRequirements filters { traderId, status? } and sorts createdAt desc.
+buyingRequirementSchema.index({ traderId: 1, status: 1, createdAt: -1 });
+// getBuyingRequirements filters { status, variety? } and sorts createdAt desc.
+buyingRequirementSchema.index({ status: 1, variety: 1, createdAt: -1 });
 
 // No next() needed
 buyingRequirementSchema.pre('save', async function () {

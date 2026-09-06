@@ -136,6 +136,11 @@ export const resolveReport = async (req, res) => {
 
     await report.save();
 
+    // getReports serves resolvedBy populated, and the client splices this
+    // response straight into that list. Without the same populate the row
+    // re-renders as "Resolved by undefined".
+    await report.populate('resolvedBy', 'name email');
+
     logger.info(`Report resolved: ${report._id} by ${req.user.email}`);
 
     res.json({ success: true, message: 'Report marked resolved', report });

@@ -30,8 +30,12 @@ const marketPriceSchema = new mongoose.Schema(
 
     setBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
-  { timestamps: true, indexes: [{ district: 1, variety: 1, date: -1 }] }
+  { timestamps: true }
 );
+
+// Mongoose has no `indexes` schema option — declaring them there is silently
+// ignored. The hot path is "latest price for a district + variety".
+marketPriceSchema.index({ district: 1, variety: 1, date: -1 });
 
 // No next() needed
 marketPriceSchema.pre('save', async function () {

@@ -38,8 +38,12 @@ const analyticsSchema = new mongoose.Schema(
     totalSurveys: Number,
     averageSatisfaction: Number,
   },
-  { timestamps: true, indexes: [{ date: -1 }, { district: 1 }] }
+  { timestamps: true }
 );
+
+// Declared via schema.index(): the `indexes` schema option does not exist and
+// was silently ignored, so none of these were ever created.
+analyticsSchema.index({ district: 1, date: -1 });
 
 // No pre-save hook needed
 

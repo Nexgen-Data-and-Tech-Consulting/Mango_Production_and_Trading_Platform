@@ -161,7 +161,7 @@ export const getSurveys = async (req, res) => {
 export const getMySurveyYears = async (req, res) => {
   try {
     const surveys = await Survey.find({ farmerId: req.user.id })
-      .select('surveyYearBS status createdAt')
+      .select('surveyYearBS status createdAt verificationNotes')
       .sort({ surveyYearBS: -1 });
 
     const currentYearBS = getCurrentBsYear();
@@ -171,9 +171,14 @@ export const getMySurveyYears = async (req, res) => {
       currentYearBS,
       hasCurrentYear: surveys.some((s) => s.surveyYearBS === currentYearBS),
       years: surveys.map((s) => ({
+        // The id is what lets a farmer open an existing record to correct it;
+        // without it the client can only ever POST a new survey and hit the
+        // one-per-year conflict. verificationNotes is why it was rejected.
+        id: s._id,
         year: s.surveyYearBS,
         status: s.status,
         submittedAt: s.createdAt,
+        verificationNotes: s.verificationNotes,
       })),
     });
   } catch (error) {
@@ -271,6 +276,16 @@ export const updateSurvey = async (req, res) => {
     Object.keys(req.body).forEach((key) => {
       if (!immutable.includes(key)) survey.set(key, req.body[key]);
     });
+
+    // A farmer correcting a rejected record is resubmitting it. Status is
+    // immutable from the request body, so move it back into the officer's
+    // `status=submitted` queue here — otherwise the correction is saved but no
+    // officer ever sees it again, and the rejection is still a dead end.
+    if (survey.status === 'rejected' && req.user.role === 'farmer') {
+      survey.status = 'submitted';
+      survey.verifiedBy = undefined;
+      survey.verifiedAt = undefined;
+    }
 
     await survey.save();
 
